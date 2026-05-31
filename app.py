@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from services.ai_service import AIService
-import os
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
@@ -17,17 +17,46 @@ def index():
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    data = request.get_json()
-    symbol = data.get('stock')
+    try:
+        data = request.get_json()
 
-    if not symbol:
-        return jsonify({"error": "Stock symbol is required"}), 400
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
 
-    # Gemini fetches all data URLs server-side via URL Context tool.
-    # Nothing is fetched on this machine.
-    result = ai_service.generate_analysis(symbol)
-    return jsonify({"analysis": result})
+        symbol = data.get('stock')
+
+        if not symbol:
+            return jsonify({"error": "Stock symbol is required"}), 400
+
+        result = ai_service.generate_analysis(symbol)
+
+        return jsonify({
+            "success": True,
+            "analysis": result
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Page not found"}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({"error": "Internal server error"}), 500
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
