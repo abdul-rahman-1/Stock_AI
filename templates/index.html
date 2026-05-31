@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Stock Dashboard | Futuristic Finance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://unpkg.com/three@0.148.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:,"> <!-- Quick fix for favicon 404 -->
+    <style>
+        :root {
+            --bg-dark: #050505;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --neon-green: #00ff88;
+            --neon-red: #ff3366;
+            --neon-blue: #00d4ff;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+        }
+
+        .neon-text-green { color: var(--neon-green); text-shadow: 0 0 10px rgba(0, 255, 136, 0.5); }
+        .neon-text-red { color: var(--neon-red); text-shadow: 0 0 10px rgba(255, 51, 102, 0.5); }
+        .neon-border-green { border-color: var(--neon-green); box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
+
+        #three-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+        .loading-skeleton {
+            background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Ticker Animation */
+        .ticker-wrap {
+            width: 100%;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 8px 0;
+        }
+        .ticker {
+            display: inline-block;
+            white-space: nowrap;
+            padding-right: 100%;
+            animation: ticker 30s linear infinite;
+        }
+        .ticker__item {
+            display: inline-block;
+            padding: 0 2rem;
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+        @keyframes ticker {
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-100%, 0, 0); }
+        }
+
+        /* Fullscreen Loader */
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(5, 5, 5, 0.9);
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(20px);
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <canvas id="three-canvas"></canvas>
+
+    <!-- Ticker Tape -->
+    <div class="ticker-wrap relative z-20">
+        <div class="ticker mono">
+            <div class="ticker__item">NIFTY 50 <span class="text-emerald-400">22,147.20 +0.85%</span></div>
+            <div class="ticker__item">SENSEX <span class="text-emerald-400">73,158.24 +0.74%</span></div>
+            <div class="ticker__item">BANK NIFTY <span class="text-rose-400">46,812.10 -0.15%</span></div>
+            <div class="ticker__item">RELIANCE <span class="text-emerald-400">2,985.40 +1.20%</span></div>
+            <div class="ticker__item">TATASTEEL <span class="text-emerald-400">145.20 +2.10%</span></div>
+            <div class="ticker__item">HDFCBANK <span class="text-rose-400">1,422.30 -0.45%</span></div>
+            <!-- Repeat for seamless loop -->
+            <div class="ticker__item">NIFTY 50 <span class="text-emerald-400">22,147.20 +0.85%</span></div>
+            <div class="ticker__item">SENSEX <span class="text-emerald-400">73,158.24 +0.74%</span></div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="relative w-24 h-24 mb-6">
+            <div class="absolute inset-0 border-4 border-cyan-500/20 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-cyan-500 rounded-full border-t-transparent animate-spin"></div>
+            <div class="absolute inset-4 bg-gradient-to-tr from-cyan-500 to-emerald-500 rounded-full opacity-20 animate-pulse"></div>
+        </div>
+        <h2 class="text-xl font-bold tracking-widest text-white animate-pulse">AI <span class="text-cyan-400">ANALYZING</span></h2>
+        <p class="text-[10px] text-white/40 mt-2 mono uppercase tracking-widest">Processing Market Neural Networks...</p>
+    </div>
+
+    <div class="container mx-auto px-4 py-8 relative z-10">
+        <!-- Header / Search -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-tr from-cyan-500 to-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                </div>
+                <h1 class="text-2xl font-bold tracking-tight">STOCK<span class="text-cyan-400">AI</span></h1>
+            </div>
+
+            <div class="flex flex-col w-full md:w-auto gap-2">
+                <div class="flex items-center gap-2 glass p-2 rounded-2xl border-white/5">
+                    <input type="text" id="stock-input" placeholder="TATASTEEL.NS, RELIANCE.NS..." 
+                        class="bg-transparent border-none focus:ring-0 text-white px-4 py-2 w-full md:w-64 mono placeholder-white/20">
+                    <button id="analyze-btn" class="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-6 py-2 rounded-xl font-semibold transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+                        Analyze
+                    </button>
+                </div>
+                <p class="text-[9px] text-white/20 px-4 mono uppercase tracking-tighter">Tip: Use .NS for NSE or .BO for BSE stocks</p>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <main id="dashboard-content" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Column: Chart & Indicators -->
+            <div class="lg:col-span-8 space-y-6">
+                <!-- Main Chart -->
+                <div class="glass p-6 h-[500px] relative overflow-hidden flex flex-col">
+                    <div class="flex justify-between items-center mb-2">
+                        <div id="chart-info">
+                            <h2 class="text-xl font-semibold" id="stock-title">Select a stock...</h2>
+                            <p class="text-white/40 text-sm mono" id="price-display">--</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="px-2 py-1 rounded bg-white/5 text-[10px] mono">1D</span>
+                            <span class="px-2 py-1 rounded bg-white/5 text-[10px] mono">LIVE</span>
+                        </div>
+                    </div>
+                    <!-- Trend badges row -->
+                    <div id="trend-display" class="flex gap-2 mb-3"></div>
+                    <div id="chart-container" class="flex-grow w-full"></div>
+                </div>
+
+                <!-- Technical Indicator Widgets -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="glass p-4 text-center">
+                        <p class="text-white/40 text-xs uppercase mb-1">RSI</p>
+                        <p class="text-xl font-bold mono" id="rsi-val">--</p>
+                    </div>
+                    <div class="glass p-4 text-center">
+                        <p class="text-white/40 text-xs uppercase mb-1">EMA 9/20</p>
+                        <p class="text-sm font-bold mono" id="ema-val">--</p>
+                    </div>
+                    <div class="glass p-4 text-center">
+                        <p class="text-white/40 text-xs uppercase mb-1">MACD</p>
+                        <p class="text-sm font-bold mono" id="macd-val">--</p>
+                    </div>
+                    <div class="glass p-4 text-center">
+                        <p class="text-white/40 text-xs uppercase mb-1">Volatility</p>
+                        <p class="text-sm font-bold mono" id="volatility-val">--</p>
+                    </div>
+                </div>
+
+                <!-- Support & Resistance + Market Structure -->
+                <div class="glass p-6">
+                    <h3 class="text-sm font-semibold text-white/60 mb-4 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Market Structure
+                    </h3>
+                    <div class="flex flex-wrap gap-4" id="sr-container">
+                        <div class="flex flex-col gap-2 flex-1">
+                            <p class="text-[10px] uppercase text-white/30">Resistance</p>
+                            <div id="resistance-list" class="space-y-2">
+                                <div class="h-4 w-full loading-skeleton rounded opacity-20"></div>
+                            </div>
+                        </div>
+                        <div class="flex flex-col gap-2 flex-1">
+                            <p class="text-[10px] uppercase text-white/30">Support</p>
+                            <div id="support-list" class="space-y-2">
+                                <div class="h-4 w-full loading-skeleton rounded opacity-20"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Breakout / Reversal probability -->
+                    <div class="flex gap-6 mt-4 pt-4 border-t border-white/5">
+                        <div class="flex flex-col gap-1">
+                            <p class="text-[10px] uppercase text-white/30">Breakout Probability</p>
+                            <p class="text-lg font-bold mono text-cyan-400" id="breakout-prob">--</p>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <p class="text-[10px] uppercase text-white/30">Reversal Probability</p>
+                            <p class="text-lg font-bold mono text-yellow-400" id="reversal-prob">--</p>
+                        </div>
+                    </div>
+                    <!-- Volume analysis -->
+                    <div class="flex gap-6 mt-3">
+                        <div class="flex flex-col gap-1 flex-1">
+                            <p class="text-[10px] uppercase text-white/30">Institutional Activity</p>
+                            <p class="text-xs font-bold mono text-white/70" id="inst-activity">--</p>
+                        </div>
+                        <div class="flex flex-col gap-1 flex-1">
+                            <p class="text-[10px] uppercase text-white/30">Accumulation / Distribution</p>
+                            <p class="text-xs font-bold mono text-white/70" id="acc-dist">--</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: AI Insights -->
+            <div class="lg:col-span-4 space-y-6">
+                <!-- AI Trade Call Card -->
+                <div id="trade-call-card" class="glass p-6 border-cyan-500/20 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-4 opacity-10">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
+                    <h3 id="trade-call-header" class="text-sm font-semibold text-white/60 mb-4">INTRADAY CALL</h3>
+                    <div class="mb-4">
+                        <span id="signal-badge" class="px-4 py-2 rounded-full bg-white/5 text-2xl font-black italic tracking-widest mono">WAITING</span>
+                    </div>
+
+                    <!-- HOLD reason box — shown only for HOLD signal -->
+                    <div id="hold-reason-box" class="hidden mb-4 p-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20 space-y-2">
+                        <p class="text-[10px] text-yellow-400/70 uppercase tracking-widest font-bold">Why HOLD?</p>
+                        <p id="hold-reason-text" class="text-xs text-white/70 leading-relaxed"></p>
+                        <div class="pt-2 border-t border-yellow-500/10">
+                            <p class="text-[10px] text-yellow-400/60 uppercase tracking-widest mb-1">Watch for</p>
+                            <p id="hold-trigger-text" class="text-xs text-yellow-300 font-semibold leading-relaxed"></p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex justify-between text-sm">
+                            <span id="lbl-entry" class="text-white/40">Entry</span>
+                            <span class="mono font-bold" id="entry-val">--</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span id="lbl-target1" class="text-white/40">Target 1</span>
+                            <span class="mono font-bold text-emerald-400" id="target1-val">--</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span id="lbl-target2" class="text-white/40">Target 2</span>
+                            <span class="mono font-bold text-emerald-400" id="target2-val">--</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span id="lbl-sl" class="text-white/40">Stop Loss</span>
+                            <span class="mono font-bold text-rose-400" id="sl-val">--</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-white/40">Risk / Reward</span>
+                            <span class="mono font-bold text-cyan-400" id="rr-ratio">--</span>
+                        </div>
+                        <!-- Trade type badges -->
+                        <div id="trade-type-badges" class="flex gap-2 flex-wrap pt-1"></div>
+                        <div class="pt-3 border-t border-white/5">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-white/40">Confidence</span>
+                                <span class="mono" id="confidence-val">0%</span>
+                            </div>
+                            <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div id="confidence-bar" class="bg-cyan-500 h-full transition-all duration-1000" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sentiment Meter -->
+                <div class="glass p-6">
+                    <h3 class="text-sm font-semibold text-white/60 mb-4">MARKET SENTIMENT</h3>
+                    <div class="relative h-32 flex flex-col items-center justify-center">
+                        <svg class="w-48 h-24" viewBox="0 0 100 50">
+                            <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8" stroke-linecap="round"/>
+                            <path id="sentiment-arc" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="url(#sentiment-gradient)" stroke-width="8" stroke-linecap="round" stroke-dasharray="126" stroke-dashoffset="126" class="transition-all duration-1000"/>
+                            <defs>
+                                <linearGradient id="sentiment-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#ff3366" />
+                                    <stop offset="50%" stop-color="#ffcc00" />
+                                    <stop offset="100%" stop-color="#00ff88" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="absolute bottom-2 text-center">
+                            <p class="text-2xl font-black mono" id="sentiment-score">0</p>
+                            <p class="text-[10px] uppercase tracking-widest text-white/40" id="sentiment-label">Neutral</p>
+                        </div>
+                    </div>
+                    <!-- News counts -->
+                    <div class="flex justify-around mt-2 pt-3 border-t border-white/5">
+                        <div class="text-center">
+                            <p class="text-lg font-bold mono text-emerald-400" id="bull-news">--</p>
+                            <p class="text-[9px] text-white/30 uppercase">Bullish</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-lg font-bold mono text-white/50" id="neut-news">--</p>
+                            <p class="text-[9px] text-white/30 uppercase">Neutral</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-lg font-bold mono text-rose-400" id="bear-news">--</p>
+                            <p class="text-[9px] text-white/30 uppercase">Bearish</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Summary -->
+                <div class="glass p-6">
+                    <h3 class="text-sm font-semibold text-white/60 mb-4">AI ANALYSIS SUMMARY</h3>
+                    <p id="ai-summary-text" class="text-sm text-white/70 leading-relaxed italic">
+                        Enter a stock ticker and click 'Analyze' to generate a comprehensive AI-driven market outlook.
+                    </p>
+                    <div id="risk-warning" class="mt-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl hidden">
+                        <p class="text-[10px] text-rose-400 leading-tight">
+                            <span class="font-bold">RISK WARNING:</span> <span id="risk-text"></span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Latest News -->
+                <div class="glass p-6 max-h-80 overflow-y-auto">
+                    <h3 class="text-sm font-semibold text-white/60 mb-4">RELEVANT NEWS</h3>
+                    <div id="news-list" class="space-y-4">
+                        <p class="text-xs text-white/30 text-center py-8">No news data fetched yet.</p>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+
+        <footer class="mt-12 text-center text-white/20 text-[10px] uppercase tracking-[0.2em] mono">
+            Powered by StockAI Neural Engine • Market Data by Yahoo Finance • News by MarketAux
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
